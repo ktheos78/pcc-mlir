@@ -11,8 +11,6 @@ def is_number(s):
     except ValueError:
         return False
 
-
-
 #
 #   AST nodes
 #
@@ -83,8 +81,6 @@ class Func(ASTNode):
     def __repr__(self):
         return f"Func({self.ret_type} {self.name}, body = {self.body})"
     
-
-
 #
 #   Parser
 #
@@ -165,8 +161,8 @@ class Parser:
         return func
 
 
-p = Parser()
-res = p.walk("main.c")
-print()
-print("AST:")
-print(res)
+#p = Parser()
+#res = p.walk("main.c")
+#print()
+#print("AST:")
+#print(res)
