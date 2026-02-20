@@ -3,7 +3,7 @@ picoC AST to high-level MLIR converter
 """
 
 from xdsl.dialects import arith, builtin, func
-from xdsl.ir import Block, SSAValue, Region, Operation
+from xdsl.ir import Block, SSAValue, Region
 
 from frontend_ast import *
 

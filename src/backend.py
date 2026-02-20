@@ -1,12 +1,13 @@
 from xdsl.dialects import arith, builtin
-
-from xdsl.rewriter import Rewriter
+from xdsl.transforms.common_subexpression_elimination import cse
+from xdsl.transforms.dead_code_elimination import dce
 from xdsl.pattern_rewriter import (
     GreedyRewritePatternApplier,
     PatternRewriter,
     PatternRewriteWalker,
     RewritePattern
 )
+
 
 from frontend_ast import *
 from frontend_mlir_gen import *
@@ -67,6 +68,34 @@ class MulPowTwoPattern(RewritePattern):
         shl = arith.ShLIOp(x, shift_val)
         rewriter.replace_op(op, [pow_two_op, shl])
 
+# x / 2^n -> x >> n
+class DivPowTwoPattern(RewritePattern):
+
+    def match_and_rewrite(self, op, rewriter):
+        
+        # match arith.divsi
+        if not isinstance(op, arith.DivSIOp):
+            return
+        x = op.lhs
+        
+        # check if rhs is a constant
+        if not isinstance(cst := op.rhs.owner, arith.ConstantOp):
+            return
+        
+        # check if constant is power of 2
+        rhs = cst.value.value.data
+        if (not( rhs > 0 and ((rhs & (rhs - 1)) == 0))):
+            return
+        
+        # replace x / 2^n with x >> n and convert to SSA for ShLIOp
+        pow_two = (rhs & -rhs).bit_length() - 1     # ctz bithack
+        pow_two_op = arith.ConstantOp.from_int_and_width(pow_two, 32)
+
+        # get result (shift amount) and replace 
+        shift_val = pow_two_op.result 
+        shl = arith.ShRSIOp(x, shift_val)
+        rewriter.replace_op(op, [pow_two_op, shl])
+
 # x & 0 -> 0
 class AndZeroPattern(RewritePattern):
 
@@ -109,6 +138,7 @@ class XorSelfPattern(RewritePattern):
 def apply_all_rewrites(module: builtin.ModuleOp):
     merged_pattern = GreedyRewritePatternApplier([AddZeroPattern(),
                                                   MulPowTwoPattern(),
+                                                  DivPowTwoPattern(),
                                                   AndZeroPattern(),
                                                   XorSelfPattern()])
     walker = PatternRewriteWalker(merged_pattern)
@@ -122,17 +152,26 @@ High-level MLIR to ARM MLIR converter
 Register allocator
 """
 
+
+# generate AST
 p = Parser()
 res = p.walk("test.c")
+print("AST:")
+print(res)
 print()
 
+# generate high-level MLIR from AST 
 gen = MLIRGenerator()
 modl = gen.compile(res)
-print("Before optimization:")
+print("High-level MLIR before optimization:")
 print(modl)
 print()
 
 # apply optimizations
-apply_all_rewrites(modl)
-print("After optimization:")
+apply_all_rewrites(modl)    # canonicalizations
+cse(modl)                   # common subexpression elimination
+dce(modl)                   # dead code elimination
+
+print("High-level MLIR after optimization:")
 print(modl)
+print()
